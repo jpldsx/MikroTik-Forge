@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MikroTik Forge — RouterOS v6 &amp; v7 config generator</title>
+<meta name="description" content="Generate RouterOS v6 and v7 configuration scripts: multi-WAN (failover, ECMP, PCC), VLANs, firewall, QoS with gaming priority, WireGuard.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e8a317'/%3E%3Cpath d='M8 22V10h4l4 6 4-6h4v12h-3.5v-7l-4.5 6.5L11.5 15v7z' fill='%23111'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true">F</span><div><h1>MikroTik Forge</h1><p>RouterOS config generator</p></div></div>
+  <div class="ver" role="radiogroup" aria-label="RouterOS version">
+    <label><input type="radio" name="version" value="6" data-k="version"><span>RouterOS v6</span></label>
+    <label><input type="radio" name="version" value="7" data-k="version"><span>RouterOS v7</span></label>
+  </div>
+  <div class="actions">
+    <select id="examples" aria-label="Load example"><option value="">Load example…</option></select>
+    <button id="btn-share" class="ghost" type="button">Share link</button>
+    <button id="btn-export" class="ghost" type="button">Export JSON</button>
+    <button id="btn-import" class="ghost" type="button">Import JSON</button>
+    <input id="file-import" type="file" accept="application/json,.json" hidden>
+  </div>
+</header>
+
+<main class="layout">
+  <div class="form">
+    <nav class="tabs" role="tablist" aria-label="Configuration sections">
+      <button role="tab" data-tab="wan" aria-selected="true">WAN &amp; multi-WAN</button>
+      <button role="tab" data-tab="lan">LAN &amp; VLANs</button>
+      <button role="tab" data-tab="qos">Bandwidth &amp; gaming</button>
+      <button role="tab" data-tab="fw">Firewall &amp; NAT</button>
+      <button role="tab" data-tab="sys">System &amp; DNS</button>
+      <button role="tab" data-tab="vpn">WireGuard</button>
+      <button role="tab" data-tab="api">API &amp; deploy</button>
+    </nav>
+
+    <!-- WAN -->
+    <section data-panel="wan">
+      <div class="card">
+        <h2>Multi-WAN mode</h2>
+        <div class="seg" id="mw-mode" role="radiogroup">
+          <label><input type="radio" name="mwmode" value="single" data-k="multiwan.mode"><span><b>Single</b>One ISP</span></label>
+          <label><input type="radio" name="mwmode" value="failover" data-k="multiwan.mode"><span><b>Failover</b>Backup ISP takes over</span></label>
+          <label><input type="radio" name="mwmode" value="ecmp" data-k="multiwan.mode"><span><b>ECMP</b>Per-flow balancing</span></label>
+          <label><input type="radio" name="mwmode" value="pcc" data-k="multiwan.mode"><span><b>PCC</b>Per-connection, weighted + failover</span></label>
+        </div>
+        <p class="hint" id="mw-hint"></p>
+      </div>
+      <div id="wans"></div>
+      <button class="add" data-act="add-wan" type="button">+ Add WAN</button>
+    </section>
+
+    <!-- LAN -->
+    <section data-panel="lan" hidden>
+      <div class="card">
+        <h2>Native LAN <small>untagged, on the bridge</small></h2>
+        <div class="grid">
+          <label>Bridge name<input data-k="lan.bridge"></label>
+          <label>Gateway address / prefix<input data-k="lan.address" placeholder="192.168.88.1/24 (empty = no native LAN)"></label>
+          <label class="wide">Bridge ports (comma separated)<input data-k="lan.ports" placeholder="ether2, ether3, ether4"></label>
+          <label>DHCP pool<input data-k="lan.pool" placeholder="auto"></label>
+          <label>Lease time<input data-k="lan.leaseTime"></label>
+          <label class="check"><input type="checkbox" data-k="lan.dhcp"> DHCP server on LAN</label>
+        </div>
+      </div>
+      <h3 class="sub">VLANs <small>bridge VLAN filtering is enabled as the very last command</small></h3>
+      <div id="vlans"></div>
+      <button class="add" data-act="add-vlan" type="button">+ Add VLAN</button>
+      <h3 class="sub">Static DHCP leases</h3>
+      <div id="leases"></div>
+      <button class="add" data-act="add-lease" type="button">+ Add lease</button>
+    </section>
+
+    <!-- QoS -->
+    <section data-panel="qos" hidden>
+      <div class="card">
+        <h2>Bandwidth management</h2>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="qosmode" value="off" data-k="qos.mode"><span><b>Off</b>No shaping</span></label>
+          <label><input type="radio" name="qosmode" value="htb" data-k="qos.mode"><span><b>HTB priority</b>v6 + v7 queue tree</span></label>
+          <label><input type="radio" name="qosmode" value="cake" data-k="qos.mode"><span><b>CAKE</b>v7.1+ · fixes bufferbloat</span></label>
+          <label><input type="radio" name="qosmode" value="fq-codel" data-k="qos.mode"><span><b>FQ-CoDel</b>v7.1+ · simple SQM</span></label>
+        </div>
+        <p class="hint" id="qos-hint"></p>
+        <div class="grid">
+          <label>Shape to % of line rate<input type="number" min="50" max="100" data-k="qos.shapePercent"></label>
+          <label>Download queue parent<input data-k="qos.dlParent" placeholder="bridge (or global)"></label>
+          <label class="check"><input type="checkbox" data-k="qos.realtime"> Prioritise DNS / VoIP / video-call UDP</label>
+          <label class="check"><input type="checkbox" data-k="qos.vlanLimits"> Apply per-VLAN caps (from VLAN tab)</label>
+          <label class="wide">Bulk devices, lowest priority (IPs)<input data-k="qos.bulkDevices" placeholder="192.168.88.200, 192.168.88.201"></label>
+        </div>
+        <p class="hint">Set measured <b>download/upload Mbps</b> on each WAN (WAN tab). Shaping is applied per WAN.</p>
+      </div>
+      <div class="card">
+        <h2>Gaming priority</h2>
+        <label class="check big"><input type="checkbox" data-k="qos.gaming.enabled"> Enable gaming priority</label>
+        <div class="grid">
+          <label class="wide">Gaming devices (consoles / PCs, IPs)<input data-k="qos.gaming.devices" placeholder="192.168.88.20, 192.168.88.21"></label>
+          <label>Device traffic matched<select data-k="qos.gaming.devicesMode"><option value="udp">UDP only (keeps downloads out of the fast lane)</option><option value="all">All traffic from those devices</option></select></label>
+        </div>
+        <div id="presets" class="presets"></div>
+        <div class="grid">
+          <label>Extra UDP ports<input data-k="qos.gaming.customUdp" placeholder="3659, 5000-5500"></label>
+          <label>Extra TCP ports<input data-k="qos.gaming.customTcp" placeholder="optional"></label>
+        </div>
+        <p class="hint"><b>official</b> ports were read from the publisher's support page; <b>community</b> ports are widely published but verify them with the publisher. Device matching is the most reliable method — port lists are a fallback.</p>
+      </div>
+    </section>
+
+    <!-- Firewall -->
+    <section data-panel="fw" hidden>
+      <div class="card">
+        <h2>Firewall</h2>
+        <div class="grid">
+          <label class="check"><input type="checkbox" data-k="firewall.fasttrack"> FastTrack (auto-disabled when PCC / QoS marks need mangle)</label>
+          <label class="check"><input type="checkbox" data-k="firewall.allowPing"> Answer ICMP ping</label>
+          <label class="check"><input type="checkbox" data-k="firewall.dropBogons"> Drop bogon sources on WAN (raw)</label>
+          <label class="check"><input type="checkbox" data-k="firewall.hardenServices"> Harden services (disable telnet/ftp/www/api, restrict SSH/Winbox, MAC server → LAN)</label>
+          <label class="check"><input type="checkbox" data-k="firewall.mgmtFromWan"> Allow SSH/Winbox from whitelisted WAN IPs</label>
+          <label class="wide">Whitelisted IPs / CIDRs<input data-k="firewall.mgmtWhitelist" placeholder="198.51.100.7, 203.0.113.0/28"></label>
+        </div>
+      </div>
+      <h3 class="sub">Port forwards</h3>
+      <div id="forwards"></div>
+      <button class="add" data-act="add-fwd" type="button">+ Add port forward</button>
+    </section>
+
+    <!-- System -->
+    <section data-panel="sys" hidden>
+      <div class="card">
+        <h2>System</h2>
+        <div class="grid">
+          <label>Identity<input data-k="system.identity"></label>
+          <label>Time zone<input data-k="system.timezone" placeholder="Asia/Shanghai"></label>
+          <label class="wide">NTP servers <span class="note" id="ntp-note"></span><input data-k="system.ntp"></label>
+          <label class="wide">Upstream DNS servers<input data-k="system.dns"></label>
+          <label class="check"><input type="checkbox" data-k="system.allowRemoteRequests"> Router is the DNS cache for clients</label>
+          <label class="check"><input type="checkbox" data-k="system.forceDns"> Force all LAN DNS through the router</label>
+          <label class="check"><input type="checkbox" data-k="system.disableIpv6"> Disable IPv6</label>
+        </div>
+      </div>
+      <h3 class="sub">Static DNS records</h3>
+      <div id="staticdns"></div>
+      <button class="add" data-act="add-dns" type="button">+ Add record</button>
+    </section>
+
+    <!-- WireGuard -->
+    <section data-panel="vpn" hidden>
+      <div class="card">
+        <h2>WireGuard server <small>RouterOS v7 only</small></h2>
+        <label class="check big"><input type="checkbox" data-k="wireguard.enabled"> Enable WireGuard</label>
+        <div class="grid">
+          <label>Interface name<input data-k="wireguard.name"></label>
+          <label>Listen port<input type="number" data-k="wireguard.port"></label>
+          <label>Address / prefix<input data-k="wireguard.address"></label>
+        </div>
+        <p class="hint">The router generates its own private key — nothing secret is created here. Paste each client's <b>public</b> key below.</p>
+      </div>
+      <div id="wgpeers"></div>
+      <button class="add" data-act="add-peer" type="button">+ Add peer</button>
+    </section>
+
+    <!-- API -->
+    <section data-panel="api" hidden>
+      <div class="card prose">
+        <h2>Use it from scripts &amp; CI</h2>
+        <p>The same generator runs as a Cloudflare Pages Function (a Worker). POST the JSON from <b>Export JSON</b>:</p>
+        <pre class="code" id="curl"></pre>
+        <p>Add <code>?format=rsc</code> to get the raw script as <code>text/plain</code>. <code>POST /api/share</code> stores a config in Workers KV (if bound) and returns a short id.</p>
+        <h2>Deploy your own</h2>
+        <ol>
+          <li>Push this repository to GitHub.</li>
+          <li>Create a Cloudflare Pages project (direct upload) and an API token with <i>Cloudflare Pages: Edit</i>.</li>
+          <li>Add repo secrets <code>CLOUDFLARE_API_TOKEN</code>, <code>CLOUDFLARE_ACCOUNT_ID</code>; every push to <code>main</code> tests and deploys.</li>
+        </ol>
+        <p class="hint">Full steps are in the README.</p>
+      </div>
+    </section>
+  </div>
+
+  <aside class="out" aria-live="polite">
+    <div class="out-head">
+      <div class="badges" id="badges"></div>
+      <div class="out-actions">
+        <button id="btn-copy" type="button">Copy</button>
+        <button id="btn-dl" type="button" class="primary">Download .rsc</button>
+      </div>
+    </div>
+    <div id="problems" class="problems"></div>
+    <pre id="script" class="script" tabindex="0" aria-label="Generated RouterOS script"></pre>
+    <details class="apply"><summary>How to apply this safely</summary>
+      <ol>
+        <li>Upload the file and rename it <code>forge.rsc</code>.</li>
+        <li>Run <code>/system reset-configuration no-defaults=yes skip-backup=yes run-after-reset=forge.rsc</code> — the script assumes an empty router.</li>
+        <li>Prefer to test first? Take a <code>/system backup save</code> and an <code>/export</code>, then use Safe Mode (Ctrl+X) while importing.</li>
+        <li>Review every warning above before going live.</li>
+      </ol>
+    </details>
+  </aside>
+</main>
+<div id="toast" role="status" hidden></div>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
