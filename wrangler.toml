@@ -5,6 +5,6 @@ pages_build_output_dir = "./public"
 
 # Optional: short share links. Create the namespace once, then uncomment and paste its id:
 #   npx wrangler kv namespace create SHARES
-# [[kv_namespaces]]
-# binding = "SHARES"
-# id = "<paste namespace id>"
+[[kv_namespaces]]
+binding = "SHARES"
+id = "2b2d71b9a03c49ff916535f8afe4021c"
